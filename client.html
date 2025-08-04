@@ -1,0 +1,346 @@
+
+<!doctype html>
+<!--
+Copyright 2025 Google Inc. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="description" content="Sample illustrating the use of Web Bluetooth / Write Descriptor.">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    
+    <title>Web Bluetooth / Write Descriptor Sample</title>
+    <script>
+      // Add a global error event listener early on in the page load, to help ensure that browsers
+      // which don't support specific functionality still end up displaying a meaningful message.
+      window.addEventListener('error', function(error) {
+        if (ChromeSamples && ChromeSamples.setStatus) {
+          console.error(error);
+          ChromeSamples.setStatus(error.message + ' (Your browser may not support this feature.)');
+          error.preventDefault();
+        }
+      });
+    </script>
+    
+    
+    
+    
+    <link rel="icon" href="icon.png">
+    
+    <link rel="stylesheet" href="styles/main.css">
+    
+    
+  </head>
+
+  <body>
+    <img class="pageIcon" src="icon.png">
+    <h1>Web Bluetooth / Write and Read File Sample based on the Samples by Chrome</h1>
+    <p class="availability">
+      Available in <a target="_blank" href="https://www.chromestatus.com/feature/5264933985976320">Chrome 58+</a> |
+      <a target="_blank" href="https://github.com/rafaelscheel/BLE-Data-Exfiltration">View on GitHub</a> |
+      <a  href="https://googlechrome.github.io/samples/web-bluetooth/">Browse Original Sambles by Chrome</a>
+    </p>
+    <p>The <a href="https://developers.google.com/web/updates/2015/07/interact-with-ble-devices-on-the-web">Web Bluetooth
+  API</a> lets websites discover and communicate with devices over the
+Bluetooth 4 wireless standard using the Generic Attribute Profile (GATT). It is
+currently partially implemented in Android M, Chrome OS, Mac, and Windows 10.</p>
+
+<p>This is an example of writing and reading files over BLE. Be warned, the speed is roughly 1mb / minute! (Yes Minute!)
+  This is because we are using the GATT protocol which is not designed for high speed transfers and we are limited to 512 bytes per write.
+  Currently we do not expect a conformation for each write (writeValueWithoutResponse), which likely increases speed but might lead to package loss (I have not experienced this though).
+  We also read the whole file into the process memory on both sides (Client and Server). Hence beware of large files. Best ist to create ZIPs and split them into junks before sending. 
+</p>
+
+<p>
+  <h2>Connect to Service</h2>
+  <p>
+    This sample requires a Bluetooth device that supports the following service and characteristics:
+    <ul>
+      <li>Service UUID: <code>caec2ebc-e1d9-11e6-bf01-fe55135034f0</code></li>
+      <li>Characteristic UUID for file name and start: <code>caec2ebc-e1d9-11e6-bf01-fe55135034f1</code></li>
+      <li>Characteristic UUID for file content: <code>caec2ebc-e1d9-11e6-bf01-fe55135034f2</code></li>
+      <li>Characteristic UUID for file finished: <code>caec2ebc-e1d9-11e6-bf01-fe55135034f3</code></li>
+    </ul>
+  <button id="connectToServiceButton">Connect to service</button>
+
+</p>
+
+<h2>Send File</h2>
+<p>Will automatically send the file once selected.</p>
+<input type="file" id="file-input" disabled/> <!-- TODO: After testing set default to disabled-->
+<div id="message"></div>
+
+<h3>Live Output</h3>
+<div id="output" class="output">
+  <div id="content"></div>
+  <div id="status"></div>
+  <pre id="log"></pre>
+</div>
+<p>
+  <!-- <button id="readButton">Read Button</button> -->
+
+
+<p>
+  <!-- <input id="description" type="text" placeholder="Characteristic User Description">
+      <button id="readButton">Read Button</button> -->
+
+</p>
+<script>
+  window.addEventListener('DOMContentLoaded', function() {
+    const searchParams = new URL(location).searchParams;
+    const inputs = Array.from(document.querySelectorAll('input[id]'));
+
+    inputs.forEach(input => {
+      if (searchParams.has(input.id)) {
+        if (input.type == 'checkbox') {
+          input.checked = searchParams.get(input.id);
+        } else {
+          input.value = searchParams.get(input.id);
+          input.blur();
+        }
+      }
+      if (input.type == 'checkbox') {
+        input.addEventListener('change', function(event) {
+          const newSearchParams = new URL(location).searchParams;
+          if (event.target.checked) {
+            newSearchParams.set(input.id, event.target.checked);
+          } else {
+            newSearchParams.delete(input.id);
+          }
+          history.replaceState({}, '', Array.from(newSearchParams).length ?
+              location.pathname + '?' + newSearchParams : location.pathname);
+        });
+      } else {
+        input.addEventListener('input', function(event) {
+          const newSearchParams = new URL(location).searchParams;
+          if (event.target.value) {
+            newSearchParams.set(input.id, event.target.value);
+          } else {
+            newSearchParams.delete(input.id);
+          }
+          history.replaceState({}, '', Array.from(newSearchParams).length ?
+              location.pathname + '?' + newSearchParams : location.pathname);
+        });
+      }
+    });
+  });
+</script>
+
+
+
+
+<script>
+  var ChromeSamples = {
+    log: function() {
+      var line = Array.prototype.slice.call(arguments).map(function(argument) {
+        return typeof argument === 'string' ? argument : JSON.stringify(argument);
+      }).join(' ');
+
+      document.querySelector('#log').textContent += line + '\n';
+    },
+
+    clearLog: function() {
+      document.querySelector('#log').textContent = '';
+    },
+
+    setStatus: function(status) {
+      document.querySelector('#status').textContent = status;
+    },
+
+    setContent: function(newContent) {
+      var content = document.querySelector('#content');
+      while(content.hasChildNodes()) {
+        content.removeChild(content.lastChild);
+      }
+      content.appendChild(newContent);
+    }
+  };
+</script>
+
+
+
+<script>
+  if (/Chrome\/(\d+\.\d+.\d+.\d+)/.test(navigator.userAgent)){
+    // Let's log a warning if the sample is not supposed to execute on this
+    // version of Chrome.
+    if (58 > parseInt(RegExp.$1)) {
+      ChromeSamples.setStatus('Warning! Keep in mind this sample has been tested with Chrome ' + 58 + '.');
+    }
+  }
+</script>
+
+
+
+
+  
+    
+<script>
+	  var myDescriptor;
+	  var service;
+    var serviceUuid = "caec2ebc-e1d9-11e6-bf01-fe55135034f0";
+    var RecieveFileNameAndStartCharacteristic;
+    var RecieveFileNameAndStartCharacteristicUuid = "caec2ebc-e1d9-11e6-bf01-fe55135034f1";
+    var RecieveFileContentCharacteristic;
+    var RecieveFileContentCharacteristicUuid = "caec2ebc-e1d9-11e6-bf01-fe55135034f2";
+    var RecieveFileFinishedCharacteristic;
+    var RecieveFileFinishedCharacteristicUuid = "caec2ebc-e1d9-11e6-bf01-fe55135034f3";
+
+    const fileInput = document.getElementById("file-input");
+    const messageDisplay = document.getElementById("message");
+    const reader = new FileReader();
+var startTime;
+
+fileInput.addEventListener("change", handleFileSelection);
+
+function start() {
+  startTime = new Date();
+};
+
+function handleFileSelection(event) {
+  const file = event.target.files[0];
+  messageDisplay.textContent = ""; // Clear previous messages
+
+  // Validate file existence and type
+  if (!file) {
+    log("No file selected. Please choose a file.");
+    return;
+  }
+  reader.onload = () => {
+    const fileContent = reader.result;
+    log("File read successfully! Size: " + fileContent.byteLength + " bytes.");
+    pushFile(fileContent, file.name)
+      .then(() => {
+        log("File sent successfully!");
+      })
+      .catch(error => {
+        log("Error sending file: " + error);
+      });
+  };
+  reader.onerror = () => {
+    log("Error reading the file. Please try again.");
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// Displays a message to the user
+function showMessage(message, type) {
+  messageDisplay.textContent = message;
+  messageDisplay.style.color = type === "error" ? "red" : "green";
+}
+
+
+
+async function connectToService() {
+  log('Requesting any Bluetooth Device...');
+   navigator.bluetooth.requestDevice({
+	  filters: [{services: [serviceUuid]}]}) 
+  .then(device => {
+    log('Connecting to GATT Server...');
+    return device.gatt.connect();
+  })
+  .then(server => {
+    log('Getting Service...');
+    return server.getPrimaryService(serviceUuid);
+  }).then(srv => {
+    log('Service found!');
+    this.service = srv;
+      document.querySelector('#file-input').disabled = false;
+
+  })
+ }
+
+async function onConnectServiceButtonClick() {
+  await connectToService();
+}
+
+async function pushFile(bufferToSend, fileName) {
+  if (!this.service) {
+    log('Please connect to a service first.');
+    throw new Error('Service not connected');
+  }
+  // Step 1: Inform server a new file is about to be sent and its name.
+  if (!this.RecieveFileNameAndStartCharacteristic) {
+    this.RecieveFileNameAndStartCharacteristic = await this.service.getCharacteristic(RecieveFileNameAndStartCharacteristicUuid);
+  }
+  await  this.RecieveFileNameAndStartCharacteristic.writeValue(new TextEncoder().encode(fileName));
+
+  // Step 2: Send file 512 bytes at a time.
+  if (!this.RecieveFileContentCharacteristic) {
+    this.RecieveFileContentCharacteristic = await this.service.getCharacteristic(RecieveFileContentCharacteristicUuid);
+  }
+  start();
+    var bytesSent = 0;
+    while (bytesSent < bufferToSend.byteLength) {
+      // Copy the next 512 bytes
+      var chunk = bufferToSend.slice(bytesSent, bytesSent + 512);
+      bytesSent += chunk.byteLength;
+      //console.log(chunk);
+      await this.RecieveFileContentCharacteristic.writeValueWithoutResponse(chunk);
+      log("Sent chunk of size: " + chunk.byteLength + " bytes. Total bytes sent: " + bytesSent);
+      log("Progress: " + ((bytesSent / bufferToSend.byteLength) * 100).toFixed(2) + "%  in " + (new Date() - startTime) + "ms"  );
+    }
+  log("File sent successfully! Total bytes sent: " + bytesSent);
+  // Step 3: Inform server that the file transfer is finished.
+  if (!this.RecieveFileFinishedCharacteristic) {
+    this.RecieveFileFinishedCharacteristic = await this.service.getCharacteristic(RecieveFileFinishedCharacteristicUuid);
+  }
+  await this.RecieveFileFinishedCharacteristic.writeValueWithoutResponse(new Uint8Array([1])); // Sending 1 byte to indicate completion");
+
+}
+</script>
+  
+
+
+<script>
+ /* document.querySelector('#readButton').addEventListener('click', function() {
+    if (isWebBluetoothEnabled()) {
+      ChromeSamples.clearLog();
+      //onReadButtonClick();
+    }
+  });*/
+  document.querySelector('#connectToServiceButton').addEventListener('click', function() {
+   onConnectServiceButtonClick();
+  });
+</script>
+
+<script>
+  log = ChromeSamples.log;
+
+  function isWebBluetoothEnabled() {
+    if (navigator.bluetooth) {
+      return true;
+    } else {
+      ChromeSamples.setStatus('Web Bluetooth API is not available.\n' +
+          'Please make sure the "Experimental Web Platform features" flag is enabled.');
+      return false;
+    }
+  }
+</script>
+
+
+    
+    <script>
+      /* jshint ignore:start */
+      (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+          (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+        m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+      })(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+      ga('create', 'UA-53563471-1', 'auto');
+      ga('send', 'pageview');
+      /* jshint ignore:end */
+    </script>
+  </body>
+</html>
