@@ -47,7 +47,7 @@ limitations under the License.
 
   <body>
     <img class="pageIcon" src="icon.png">
-    <h1>Web Bluetooth / Write and Read File Sample based on the Samples by Chrome</h1>
+    <h1>Web Bluetooth / Write and Read File Sample</h1>
     <p class="availability">
       Available in <a target="_blank" href="https://www.chromestatus.com/feature/5264933985976320">Chrome 58+</a> |
       <a target="_blank" href="https://github.com/rafaelscheel/BLE-Data-Exfiltration">View on GitHub</a> |
@@ -265,6 +265,12 @@ async function connectToService() {
 async function onConnectServiceButtonClick() {
   await connectToService();
 }
+function mergeArrays(buffer1, buffer2) {
+  var tmp = new Uint8Array(buffer1.byteLength + buffer2.byteLength);
+  tmp.set(new Uint8Array(buffer1), 0);
+  tmp.set(new Uint8Array(buffer2), buffer1.byteLength);
+  return tmp.buffer;
+}
 
 async function pushFile(bufferToSend, fileName) {
   if (!this.service) {
@@ -275,20 +281,25 @@ async function pushFile(bufferToSend, fileName) {
   if (!this.RecieveFileNameAndStartCharacteristic) {
     this.RecieveFileNameAndStartCharacteristic = await this.service.getCharacteristic(RecieveFileNameAndStartCharacteristicUuid);
   }
-  await  this.RecieveFileNameAndStartCharacteristic.writeValue(new TextEncoder().encode(fileName));
-
+  var NumberOfJunksToSend = Math.ceil(bufferToSend.byteLength / 508);
+  var NumberOfJunksToSendBuffer = new Int32Array([NumberOfJunksToSend]).buffer;
+  var fileNameBuffer = new TextEncoder().encode(fileName);
+  await  this.RecieveFileNameAndStartCharacteristic.writeValue(mergeArrays(NumberOfJunksToSendBuffer, fileNameBuffer)); 
   // Step 2: Send file 512 bytes at a time.
   if (!this.RecieveFileContentCharacteristic) {
     this.RecieveFileContentCharacteristic = await this.service.getCharacteristic(RecieveFileContentCharacteristicUuid);
   }
   start();
     var bytesSent = 0;
+    var junksSent = 0;
     while (bytesSent < bufferToSend.byteLength) {
-      // Copy the next 512 bytes
-      var chunk = bufferToSend.slice(bytesSent, bytesSent + 512);
+      // Copy the next 508 bytes
+      var chunk = bufferToSend.slice(bytesSent, bytesSent + 508);
       bytesSent += chunk.byteLength;
       //console.log(chunk);
-      await this.RecieveFileContentCharacteristic.writeValueWithoutResponse(chunk);
+      junksSent+=1;
+      var CurrentJunkIDBuffer = new Int32Array([junksSent]).buffer;
+      await this.RecieveFileContentCharacteristic.writeValue(mergeArrays(CurrentJunkIDBuffer, chunk)); // Todo: Consider using writeValueWithoutResponse for faster transfers
       log("Sent chunk of size: " + chunk.byteLength + " bytes. Total bytes sent: " + bytesSent);
       log("Progress: " + ((bytesSent / bufferToSend.byteLength) * 100).toFixed(2) + "%  in " + (new Date() - startTime) + "ms"  );
     }
@@ -297,7 +308,7 @@ async function pushFile(bufferToSend, fileName) {
   if (!this.RecieveFileFinishedCharacteristic) {
     this.RecieveFileFinishedCharacteristic = await this.service.getCharacteristic(RecieveFileFinishedCharacteristicUuid);
   }
-  await this.RecieveFileFinishedCharacteristic.writeValueWithoutResponse(new Uint8Array([1])); // Sending 1 byte to indicate completion");
+  await this.RecieveFileFinishedCharacteristic.writeValue(new Uint8Array([1])); // Sending 1 byte to indicate completion");
 
 }
 </script>
