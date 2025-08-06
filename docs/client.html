@@ -308,7 +308,7 @@ async function pushFile(bufferToSend, fileName) {
   if (!this.RecieveFileFinishedCharacteristic) {
     this.RecieveFileFinishedCharacteristic = await this.service.getCharacteristic(RecieveFileFinishedCharacteristicUuid);
   }
-  await this.RecieveFileFinishedCharacteristic.writeValue(new Uint8Array([1])); // Sending 1 byte to indicate completion");
+  await this.RecieveFileFinishedCharacteristic.writeValueWithoutResponse(new Uint8Array([1])); // Sending 1 byte to indicate completion");
 
 }
 </script>
